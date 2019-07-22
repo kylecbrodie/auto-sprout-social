@@ -1,0 +1,32 @@
+{
+	// login
+	"username": "#email",
+	"password": "#password",
+	"login": "button[type=submit]",
+	// goToPublishingCalendar
+	"publishingLink": "a.menu-item-link.publishing",
+	"calendarLink": "a[data-pollinator-action=view_calendar]",
+	// goToCompose
+	"composeButton": "#global-actions-compose",
+	"draftSwitch": "button[role=switch]",
+	// removeExistingAccounts
+	"accountPickerButton": "div.ProfilePickerButton",
+	// removeExistingAccount
+	"accountSearch": "div.ProfilePickerHeader-input input",
+	"accountCheckbox": "div.ProfilePickerItem-actions input[type=checkbox]",
+	// addAccounts
+	"composeColumn": "#composing div.Compose-columns > div:nth-child(1)",
+	// addCaption
+	"captionTextbox": "div[role=textbox]",
+	// addImage
+	"uploadMedia": "button[title=\"Upload Media\"]",
+	"uploadImages": "button[data-qa-menu-item=\"Upload Image(s)\"]",
+	"imageInput": "div.MediaUpload div.FileSelector-input input",
+	"uploadedImage": "img[alt=\"Uploaded Image\"]",
+	// setScheduledTime
+	"todayTD": ".ui-datepicker-today",
+	"dateInput": "input[name=date]",
+	// schedule
+	"scheduleButton": "#ComposeSubmitButton-primary",
+	"successDialog": "div.Toast._success"
+}
