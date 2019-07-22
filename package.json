@@ -1,6 +1,6 @@
 {
   "name": "auto-sprout-social",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Automates adding graphics, captions, and choosing a date for scheduling posts on Sprout Social",
   "main": "index.js",
   "scripts": {

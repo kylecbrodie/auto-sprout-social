@@ -17,11 +17,16 @@ async function loadSelectors(selectorsJsonFilePath) {
 
 async function loadData(csvFilePath) {
 	const data = [];
-	const parser = parse()
+	const parser = parse();
+	const heading_row = process.env.HEADING_ROW.toLowerCase().trim() === "true";
+	let heading_skipped = false;
 	parser.on("readable", () => {
 		let record;
 		while(record = parser.read()) {
-			if(record[4].trim().toLowerCase() !== "time") {
+			if(heading_row && !heading_skipped) {
+				heading_skipped = true;
+			}
+			else {
 				data.push(record);
 			}
 		}
@@ -47,9 +52,10 @@ async function loadData(csvFilePath) {
 }
 
 async function init(uri) {
+	const headless = process.env.HEADLESS.toLowerCase().trim() === "true";
 	const browser = await puppeteer.launch({
 		dumpio: true,
-		headless: true,
+		headless: headless,
 		defaultViewport: {
 			width: 1440,
 			height: 900
@@ -192,16 +198,19 @@ async function main() {
 		{
 			await goToCompose(selectors, page);
 			await page.waitForSelector(selectors.draftSwitch);
+			const draftSwitch = await page.$(selectors.draftSwitch);
+			const draft = process.env.DRAFT.toLowerCase().trim();
 			let draftSwitchState = await page.evaluate(
-				(sel) => document.querySelector(sel).attributes["data-qa-switch-state"],
+				(sel) => document.querySelector(sel).attributes["data-qa-switch-state"].value,
 				selectors.draftSwitch
 			);
-			// NOTE: When this is equal to true
-			// it turns off draft mode if it is enabled.
-			// That is the production setting. For testing
-			// change "true" to "false" and it will turn on
-			// draft mode if it isn't enabled.
-			if(draftSwitchState === "true") {
+			// if the switch is not in the desired on/off
+			// position then click on it to change it to
+			// the desired one. draft = "true" means turn
+			// on draft mode if it isn't already and draft
+			// = "false" means turn off draft mode if it
+			// isn't already off.
+			if(draftSwitchState !== draft) {
 				await draftSwitch.click();
 			}
 			await removeExistingAccounts(selectors, page);
