@@ -1,21 +1,22 @@
 const stripJsonComments = require("strip-json-comments")
-const puppeteer = require('puppeteer');
+const puppeteer = require("puppeteer");
 const parse = require("csv-parse");
-const dotenv = require('dotenv');
+const dotenv = require("dotenv");
 const moment = require("moment");
-const path = require('path');
-const fs = require("fs").promises
+const path = require("path");
+const fs = require("fs").promises;
 
 const randomTypingDelay = () => 10 + Math.random() * 5;
 
-dotenv.config({ path: path.resolve(process.cwd(), "settings.txt") });
+dotenv.config({ path: path.resolve(__dirname, "settings.txt") });
 
-async function loadSelectors(selectorsJsonFilePath) {
-	const json = await fs.readFile(selectorsJsonFilePath, "utf-8")
-	return JSON.parse(stripJsonComments(json));
+async function loadSelectors(relativeSelectorsFilePath) {
+	const selectorsFilePath = path.resolve(__dirname, relativeSelectorsFilePath);
+	const selectorsFile = await fs.readFile(selectorsFilePath, "utf-8")
+	return JSON.parse(stripJsonComments(selectorsFile));
 }
 
-async function loadData(csvFilePath) {
+async function loadData(relativeCSVFilePath) {
 	const data = [];
 	const parser = parse();
 	const heading_row = process.env.HEADING_ROW.toLowerCase().trim() === "true";
@@ -35,17 +36,19 @@ async function loadData(csvFilePath) {
 		console.error(err);
 	});
 
+	const csvFilePath = path.resolve(__dirname, relativeCSVFilePath);
 	const csv = await fs.readFile(csvFilePath, "utf-8");
 	parser.write(csv);
 	parser.end();
 
 	const objData = data.map((row) => {
 		return {
-			accountNames: [row[0]],
-			imagePath: row[1],
-			caption: row[2],
-			date: row[3],
-			time: row[4],
+			accountName: row[0],
+			accountType: row[1],
+			imagePath: row[2],
+			caption: row[3],
+			date: row[4],
+			time: row[5]
 		}
 	});
 	return objData;
@@ -106,7 +109,7 @@ async function removeExistingAccounts(selectors, page) {
 							.innerText.split('\n'),
 		selectors.accountPickerButton)
 	while (existingAccountNames[0] !== "Please select a profile") {
-		await toggleAccount(selectors, page, existingAccountNames[0], true);
+		await toggleAccount(selectors, page, existingAccountNames[0], null, true);
 		existingAccountNames = await page.evaluate(
 			(accPickButton) => document.querySelector(accPickButton)
 								.innerText.split('\n'),
@@ -114,7 +117,7 @@ async function removeExistingAccounts(selectors, page) {
 	}
 }
 
-async function toggleAccount(selectors, page, accountName, checked) {
+async function toggleAccount(selectors, page, accountName, accountType, checked) {
 	await page.waitForSelector(selectors.accountPickerButton);
 	const menuOpen = await page.evaluate(
 		(selector) => document.querySelector(selector).classList.contains("is-open"),
@@ -143,15 +146,39 @@ async function toggleAccount(selectors, page, accountName, checked) {
 	await page.waitForSelector(sel);
 	const checkboxes = await page.$$(sel);
 	for(const checkbox of checkboxes) {
-		await checkbox.click();
+		let shouldClick = false;
+		if(accountType === null) {
+			shouldClick = true;
+		}
+		else {
+			const prevRowInnerText = await page.evaluate(
+				(checkbox, sel) => {
+					const row = checkbox.closest(sel);
+					if(row && row.previousSibling && row.previousSibling.innerText) {
+						const prevRow = row.previousSibling;
+						return prevRow.innerText.toLowerCase().trim();
+					}
+					else {
+						return "";
+					}
+				},
+				checkbox,
+				selectors.closestRow
+			);
+			if(prevRowInnerText === accountType.toLowerCase().trim()) {
+				shouldClick = true;
+			}
+		}
+
+		if(shouldClick) {
+			await checkbox.click();
+		}
 	}
 	await page.click(selectors.composeColumn);
 }
 
-async function addAccounts(selectors, page, accountNames) {
-	for(let accountName of accountNames) {
-		await toggleAccount(selectors, page, accountName);
-	}
+async function addAccount(selectors, page, accountName, accountType) {
+	await toggleAccount(selectors, page, accountName, accountType, false);
 	await page.click(selectors.composeColumn);
 }
 
@@ -162,15 +189,17 @@ async function addCaption(selectors, page, caption) {
 
 async function addImage(selectors, page, imagePath) {
 	const imageInput = await page.$(selectors.imageInput);
-	await imageInput.uploadFile(imagePath);
+	const fullImagePath = path.resolve(__dirname, imagePath);
+	await imageInput.uploadFile(fullImagePath);
 	await page.waitForSelector(selectors.uploadedImage);
 }
 
 async function setScheduledTime(selectors, page, localDateString, local24hrTimeString) {
 	await page.waitForSelector(selectors.todayTD);
 	await page.click(selectors.todayTD);
-	const datetime = `${localDateString} ${local24hrTimeString}`;
-	const scheduledTime = moment(datetime, "YYYY-MM-DD h:mm:ss A").local().utc().unix()
+	const datetime = `${localDateString} ${local24hrTimeString}`.toLowerCase().trim();
+	const expectedFormats = ["YYYY-MM-DD h:mm:ss a", "YYYY-MM-DD HH:mm:ss", "YYYY-MM-DD HH:mm", "M/D/YYYY h:mm:ss a", "M/D/YYYY h:mm a", "M/D/YY h:mm:ss a", "M/D/YY h:mm a"];
+	const scheduledTime = moment(datetime, expectedFormats).local().utc().unix()
 	await page.evaluate(
 		(sel, v) => {
 			document.querySelector(sel).value = v;
@@ -214,7 +243,7 @@ async function main() {
 				await draftSwitch.click();
 			}
 			await removeExistingAccounts(selectors, page);
-			await addAccounts(selectors, page, data.accountNames);
+			await addAccount(selectors, page, data.accountName, data.accountType);
 			await addImage(selectors, page, data.imagePath);
 			await addCaption(selectors, page, data.caption);
 			await setScheduledTime(selectors, page, data.date, data.time);

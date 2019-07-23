@@ -14,6 +14,7 @@
 	// removeExistingAccount
 	"accountSearch": "div.ProfilePickerHeader-input input",
 	"accountCheckbox": "div.ProfilePickerItem-actions input[type=checkbox]",
+	"closestRow": ".ProfilePickerItem",
 	// addAccounts
 	"composeColumn": "#composing div.Compose-columns > div:nth-child(1)",
 	// addCaption
