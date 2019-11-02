@@ -1,14 +1,19 @@
 const stripJsonComments = require("strip-json-comments")
-const puppeteer = require("puppeteer");
 const parse = require("csv-parse");
 const dotenv = require("dotenv");
 const moment = require("moment");
 const path = require("path");
 const fs = require("fs").promises;
 
-const randomTypingDelay = () => 10 + Math.random() * 5;
+const puppeteer = require("puppeteer-extra");
+const puppeteerPluginStealth = require("puppeteer-extra-plugin-stealth")
+puppeteer.use(puppeteerPluginStealth());
 
 dotenv.config({ path: path.resolve(__dirname, "settings.txt") });
+
+function randomTypingDelay() {
+	return 10 + Math.random() * 5;
+}
 
 async function loadSelectors(relativeSelectorsFilePath) {
 	const selectorsFilePath = path.resolve(__dirname, relativeSelectorsFilePath);
@@ -55,18 +60,28 @@ async function loadData(relativeCSVFilePath) {
 }
 
 async function init(uri) {
-	const headless = process.env.HEADLESS.toLowerCase().trim() === "true";
+	// const headless = process.env.HEADLESS.toLowerCase().trim() === "true";
+	const pathToUBlock = path.resolve(__dirname, "ublock");
+	const pathToUBlockExtra = path.resolve(__dirname, "ublock-extra");
 	const browser = await puppeteer.launch({
 		dumpio: true,
-		headless: headless,
+		headless: false, // headless,
 		defaultViewport: {
 			width: 1440,
 			height: 900
-		}
+		},
+		args: [
+			`--disable-extensions-except=${pathToUBlock},${pathToUBlockExtra}`,
+			`--load-extension=${pathToUBlock}`,
+			`--load-extension=${pathToUBlockExtra}`,
+		],
 	});
+	const context = browser.defaultBrowserContext();
+	// await context.clearPermissionOverrides();
+	// await context.overridePermissions(uri, ["clipboard-read"]);
 
 	const page = await browser.newPage();
-	await page.goto(process.env.LOGIN_URI, { waitUntil: 'networkidle2'})
+	await page.goto(uri, { waitUntil: 'networkidle2'})
 
 	return { browser, page };
 }
@@ -80,6 +95,7 @@ async function login(selectors, uri, username, password) {
 
 	await usernameElement.type(username, { delay: randomTypingDelay() });
 	await passwordElement.type(password, { delay: randomTypingDelay() });
+
 	await loginElement.click();
 	await page.waitForNavigation();
 
@@ -100,6 +116,25 @@ async function goToPublishingCalendar(selectors, page) {
 async function goToCompose(selectors, page) {
 	await page.waitForSelector(selectors.composeButton);
 	await page.click(selectors.composeButton);
+}
+
+async function toggleDraftSwitch(selectors, page) {
+	//let draftSwitchState = await page.evaluate(
+		//(sel) => document.querySelector(sel).attributes["data-qa-switch-state"].value,
+		//selectors.draftSwitch
+	//);
+	const draftSwitch = await page.waitForSelector(selectors.draftSwitch);
+	let draftSwitchState = await draftSwitch.evaluate((s, attr) => s.attributes[attr].value, selectors.draftSwitchStateAttribute);
+	draftSwitchState = draftSwitchState.toLowerCase().trim();
+	// if the switch is not in the desired on/off
+	// position then click on it to change it to
+	// the desired one. draft = "true" means turn
+	// on draft mode if it isn't already and draft
+	// = "false" means turn off draft mode if it
+	// isn't already off.
+	if(draftSwitchState !== process.env.DRAFT.toLowerCase().trim()) {
+		await draftSwitch.click();
+	}
 }
 
 async function removeExistingAccounts(selectors, page) {
@@ -135,16 +170,26 @@ async function toggleAccount(selectors, page, accountName, accountType, checked)
 	if(accountSearchValue.length > 0) {
 		await accountSearch.click({ clickCount: 3 });
 	}
-	await accountSearch.type(accountName.trim(), { delay: randomTypingDelay() });
-	let sel = selectors.accountCheckbox;
-	if(checked) {
-		sel += ":checked"
-	}
-	else {
-		sel += ":not(:checked)"
-	}
-	await page.waitForSelector(sel);
-	const checkboxes = await page.$$(sel);
+
+	// await paste(page, selectors.accountSearch, accountName.trim());
+
+	let toType = accountName.trim();
+	let checkboxes = [];
+	do
+	{
+		await accountSearch.type(toType.substring(0, 3));//, { delay: randomTypingDelay() });
+		toType = toType.substring(3);
+		let sel = selectors.accountCheckbox;
+		if(checked) {
+			sel += ":checked"
+		}
+		else {
+			sel += ":not(:checked)"
+		}
+		// await page.waitForSelector(sel);
+		checkboxes = await page.$$(sel);
+	} while(toType.length > 0 && (!checkboxes || checkboxes.length !== 1));
+
 	for(const checkbox of checkboxes) {
 		let shouldClick = false;
 		if(accountType === null) {
@@ -183,7 +228,7 @@ async function addAccount(selectors, page, accountName, accountType) {
 }
 
 async function addCaption(selectors, page, caption) {
-	await page.waitForSelector(selectors.captionTextbox);
+	// await paste(page, selectors.captionTextbox, caption);
 	await page.type(selectors.captionTextbox, caption);
 }
 
@@ -215,6 +260,7 @@ async function schedule(selectors, page) {
 }
 
 async function main() {
+	// const oldClipboard = await clipboardy.read();
 	const dataToSchedule = await loadData(process.env.DATA_PATH);
 	const selectors = await loadSelectors(process.env.SELECTORS_PATH);
 
@@ -226,22 +272,7 @@ async function main() {
 		try
 		{
 			await goToCompose(selectors, page);
-			await page.waitForSelector(selectors.draftSwitch);
-			const draftSwitch = await page.$(selectors.draftSwitch);
-			const draft = process.env.DRAFT.toLowerCase().trim();
-			let draftSwitchState = await page.evaluate(
-				(sel) => document.querySelector(sel).attributes["data-qa-switch-state"].value,
-				selectors.draftSwitch
-			);
-			// if the switch is not in the desired on/off
-			// position then click on it to change it to
-			// the desired one. draft = "true" means turn
-			// on draft mode if it isn't already and draft
-			// = "false" means turn off draft mode if it
-			// isn't already off.
-			if(draftSwitchState !== draft) {
-				await draftSwitch.click();
-			}
+			await toggleDraftSwitch(selectors, page);
 			await removeExistingAccounts(selectors, page);
 			await addAccount(selectors, page, data.accountName, data.accountType);
 			await addImage(selectors, page, data.imagePath);
@@ -256,7 +287,42 @@ async function main() {
 	}
 
 
+	// await clipboardy.write(oldClipboard);
 	await browser.close();
 }
 
+//async function paste(page, inputSelector, text, mustType = false) {
+	//if(!text || text.length == 0) return;
+	//let finalChar = '';
+	//if(mustType) {
+		//finalChar = text[text.length - 1];
+		//text = text.substring(0, text.length - 1);
+	//}
+	//const [ignored, input] = await Promise.all([
+		//clipboardy.write(text),
+		//page.waitForSelector(inputSelector)]);
+
+	//await input.focus();
+	//await input.evaluate(async i => {
+		//window.focus();
+		//i.value = await navigator.clipboard.readText();
+	//});
+	//if(finalChar.length > 0) {
+		//await input.type(finalChar);
+	//}
+
+	//await input.focus();
+	//await page.evaluate(() => document.execCommand("paste", false, null));
+	//await page.keyboard.down("Control");
+	//await page.keyboard.press("V");
+	//await page.keyboard.up("Control");
+
+	//const input = await page.$(inputSelector);
+	//await input.focus();
+
+	//await page.evaluate((i) => navigator.clipboard.readText().then((clippy) => console.log(clippy), (err_msg) => console.log(err_msg)), input);
+//}
+
 main();
+
+process.on("unhandledRejection", (reason, p) => console.error('Unhandled Rejection at:', p, 'reason:', reason));
