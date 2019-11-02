@@ -9,10 +9,11 @@
 	// goToCompose
 	"composeButton": "#global-actions-compose",
 	"draftSwitch": "button[role=switch]",
+	"draftSwitchStateAttribute": "data-qa-switch-ischecked",
 	// removeExistingAccounts
 	"accountPickerButton": "div.ProfilePickerButton",
 	// removeExistingAccount
-	"accountSearch": "div.ProfilePickerHeader-input input",
+	"accountSearch": "input[name=search]",
 	"accountCheckbox": "div.ProfilePickerItem-actions input[type=checkbox]",
 	"closestRow": ".ProfilePickerItem",
 	// addAccounts
@@ -28,6 +29,6 @@
 	"todayTD": ".ui-datepicker-today",
 	"dateInput": "input[name=date]",
 	// schedule
-	"scheduleButton": "#ComposeSubmitButton-primary",
+	"scheduleButton": ".ComposeSubmitButton button",
 	"successDialog": "div.Toast._success"
 }
