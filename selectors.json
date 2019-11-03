@@ -16,6 +16,8 @@
 	"accountSearch": "input[name=search]",
 	"accountCheckbox": "div.ProfilePickerItem-actions input[type=checkbox]",
 	"closestRow": ".ProfilePickerItem",
+	"listHeaderAttribute": "header",
+	"rowProfileNameAttribute": "data-qa-profile-name",
 	// addAccounts
 	"composeColumn": "#composing div.Compose-columns > div:nth-child(1)",
 	// addCaption

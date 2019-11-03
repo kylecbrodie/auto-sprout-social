@@ -153,6 +153,11 @@ async function removeExistingAccounts(selectors, page) {
 }
 
 async function toggleAccount(selectors, page, accountName, accountType, checked) {
+	accountName = accountName.trim();
+	if(accountType) {
+		accountType = accountType.toLowerCase().trim();
+	}
+
 	await page.waitForSelector(selectors.accountPickerButton);
 	const menuOpen = await page.evaluate(
 		(selector) => document.querySelector(selector).classList.contains("is-open"),
@@ -173,12 +178,14 @@ async function toggleAccount(selectors, page, accountName, accountType, checked)
 
 	// await paste(page, selectors.accountSearch, accountName.trim());
 
-	let toType = accountName.trim();
+	let toType = accountName;
 	let checkboxes = [];
+	let didClick = false;
 	do
 	{
-		await accountSearch.type(toType.substring(0, 3));//, { delay: randomTypingDelay() });
-		toType = toType.substring(3);
+		let len = checked ? 3 : 6
+		await accountSearch.type(toType.substring(0, len));//, { delay: randomTypingDelay() });
+		toType = toType.substring(len);
 		let sel = selectors.accountCheckbox;
 		if(checked) {
 			sel += ":checked"
@@ -186,39 +193,58 @@ async function toggleAccount(selectors, page, accountName, accountType, checked)
 		else {
 			sel += ":not(:checked)"
 		}
-		// await page.waitForSelector(sel);
-		checkboxes = await page.$$(sel);
-	} while(toType.length > 0 && (!checkboxes || checkboxes.length !== 1));
 
-	for(const checkbox of checkboxes) {
-		let shouldClick = false;
-		if(accountType === null) {
-			shouldClick = true;
-		}
-		else {
-			const prevRowInnerText = await page.evaluate(
-				(checkbox, sel) => {
-					const row = checkbox.closest(sel);
-					if(row && row.previousSibling && row.previousSibling.innerText) {
-						const prevRow = row.previousSibling;
-						return prevRow.innerText.toLowerCase().trim();
-					}
-					else {
-						return "";
-					}
-				},
-				checkbox,
-				selectors.closestRow
-			);
-			if(prevRowInnerText === accountType.toLowerCase().trim()) {
+		checkboxes = await page.$$(sel);
+
+		for(const checkbox of checkboxes) {
+			let shouldClick = false;
+			if(accountType === null) {
 				shouldClick = true;
 			}
-		}
+			else {
+				const {profileName, profileType} = await checkbox.evaluate(
+					(chkbx, rowSel, nameAttr, headerAttr, accType) => {
+						let profileName = "";
+						let profileType = "";
+						const row = chkbx.closest(rowSel);
+						if(row) {
+							profileName = row.attributes[nameAttr].value.trim();
+							let prevSib = row;
+							do
+							{
+								prevSib = prevSib.previousElementSibling;
+								if(prevSib && prevSib.hasAttribute(headerAttr)) {
+									const attrVal = prevSib.attributes[headerAttr].value.toLowerCase().trim();
+									if(attrVal == accType) {
+										profileType = attrVal;
+									}
+									else {
+										profileType = prevSib.innerText.toLowerCase().trim();
+									}
+									break;
+								}
+							} while(prevSib);
+						}
+						return {profileName, profileType};
+					},
+					selectors.closestRow,
+					selectors.rowProfileNameAttribute,
+					selectors.listHeaderAttribute,
+					accountType);
 
-		if(shouldClick) {
-			await checkbox.click();
+				if(profileName === accountName && profileType === accountType) {
+					shouldClick = true;
+				}
+			}
+
+			if(shouldClick) {
+				await checkbox.click();
+				didClick = true;
+				break;
+			}
 		}
-	}
+	} while(toType.length > 0 && !didClick);
+
 	await page.click(selectors.composeColumn);
 }
 
@@ -233,8 +259,8 @@ async function addCaption(selectors, page, caption) {
 }
 
 async function addImage(selectors, page, imagePath) {
-	const imageInput = await page.$(selectors.imageInput);
 	const fullImagePath = path.resolve(__dirname, imagePath);
+	const imageInput = await page.$(selectors.imageInput);
 	await imageInput.uploadFile(fullImagePath);
 	await page.waitForSelector(selectors.uploadedImage);
 }
@@ -275,8 +301,10 @@ async function main() {
 			await toggleDraftSwitch(selectors, page);
 			await removeExistingAccounts(selectors, page);
 			await addAccount(selectors, page, data.accountName, data.accountType);
-			await addImage(selectors, page, data.imagePath);
-			await addCaption(selectors, page, data.caption);
+			await Promise.all([
+				addImage(selectors, page, data.imagePath),
+				addCaption(selectors, page, data.caption)
+			]);
 			await setScheduledTime(selectors, page, data.date, data.time);
 			await schedule(selectors, page);
 		}
